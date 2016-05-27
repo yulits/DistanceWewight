@@ -3,8 +3,8 @@ import roxar
 import numpy as np
 
 class RMSProject():
-    def __init__(self, project, readonly=False):
-        self.proj = project
+    def __init__(self, projectPath, readonly=False):
+        self.proj = roxar.Project.open(projectPath, readonly)
     
     def setGrid(self, gridModel):
         self.grid_model = self.proj.grid_models[gridModel]
@@ -26,4 +26,10 @@ class RMSProject():
     
     def createProp(self, prop):
         return self.properties.create(prop, roxar.GridPropertyType.continuous, np.float32)
+    
+    def save(self):
+        self.proj.save()
+    
+    def close(self):
+        self.proj.close()
     

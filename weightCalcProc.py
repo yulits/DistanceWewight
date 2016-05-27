@@ -1,5 +1,4 @@
 import os, sys
-from datetime import datetime
 from math import sqrt
 
 try: 
@@ -37,6 +36,7 @@ except IndexError:
     
 def calcDistance():
     # calculate weight
+    gauge = int(countCell/50)
     for ind in range(startCell, startCell+countCell):
         if ch_prop_value[ind] == paramCode:
             wt = 1.0
@@ -63,8 +63,13 @@ def calcDistance():
 
         lWeight.append(wt)
         
+        if startCell == 0 and ind % gauge == 0:
+            fifo = open('%sfifo.txt' % filePath, 'a')
+            fifo.write(str(ind) + '\n')
+            fifo.close()
+        
 if __name__ == '__main__':
-    startTime = datetime.now()
+   
     # get data from files
     file = open(filePath + 'ch_prop_value.txt', 'r')
     ch_prop_value = [int(item) for item in list(file.read())]
@@ -82,11 +87,12 @@ if __name__ == '__main__':
         index += 1
         
     lWeight = []
-    
+  
     calcDistance()
+    
+    
     
     f = open('%sweight_%s.txt' % (filePath, startCell), 'w')    
     f.writelines([str(item) + '\n' for item in lWeight])
     f.close()
         
-    #print('Bye from child %i\n' % os.getpid(), 'Duration: ', datetime.now() - startTime) 

@@ -34,6 +34,7 @@ class Frame(wx.Frame):
         self.cancelBtn = wx.Button(self.panel, -1, label="Cancel")
         self.closeBtn = wx.Button(self.panel, -1, label="Close")
         self.saveBtn.Enable(False)
+        self.progress = wx.Gauge(self.panel, range=50, size=(-1, 22))
         
         self.mainSizer = wx.BoxSizer(wx.VERTICAL)
         self.selSizer = wx.FlexGridSizer(cols=2, hgap=5, vgap=5)
@@ -70,6 +71,7 @@ class Frame(wx.Frame):
         self.runSizer.Add((15,20), 1)
         self.runSizer.Add(self.closeBtn)
         self.mainSizer.Add(self.runSizer, 0, wx.EXPAND|wx.ALL, 10)
+        self.mainSizer.Add(self.progress, 0, wx.EXPAND|wx.ALL, 10)
         self.panel.SetSizer(self.mainSizer)
     
         # Fit the frame to the needs of the sizer.  The frame will
@@ -87,12 +89,9 @@ class Frame(wx.Frame):
         self.Bind(wx.EVT_BUTTON, self.onCloseClick, self.closeBtn)
         self.Bind(wx.EVT_CLOSE, self.onCloseWindow)
         
-    def saveBtnEnable(self):
-        self.saveBtn.Enable(True)
+    def runBtnEnable(self, enable=True):
+        self.runBtn.Enable(enable)
     
-    def saveBtnDisable(self):
-        self.saveBtn.Enable(False)     
-        
     def onGridChoice(self, event):
         pass
         
@@ -121,6 +120,7 @@ class App(wx.App):
     
     def OnInit(self):
         self.frame = Frame()
+        self.frame.Center()
         self.frame.Show()
         self.SetTopWindow(self.frame)
         return True

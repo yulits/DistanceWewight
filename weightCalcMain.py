@@ -4,11 +4,11 @@ import projectInitClass as pi
 import os
 import roxar
 import multiprocessing, threading
-from datetime import datetime
+import time
 import subprocess as sp
-
+projectPath = 'C:\PROJECTS\RMS\Emerald_10_PSJ.pro'
 #projectPath = r'C:\PROJECTS\RMS\Emerald_10_Seis.pro' 
-projectPath = r'C:\PROJECTS\RMS\CALC_CUT_RMS10_Python.pro'
+#projectPath = r'C:\PROJECTS\RMS\CALC_CUT_RMS10_Python.pro'
 modulePath = r'D:\PythonRMSProjects\roxarAPI\DistanceWeight\\' #where script of parallel process is
 tmpFilePath = modulePath + 'temp\\' #temporary directory
 procCount = multiprocessing.cpu_count() # number of processors 
@@ -44,19 +44,21 @@ class DWFrame(dwGUI.Frame):
             dlg.Destroy()
         else:
             self.SetTitle(self.fTitle)
-            self.saveBtnDisable()
+            self.runBtnEnable(False)
             task.cancelFlag = False
             t = threading.Thread(target=task.initCalc)
             t.start()
+            frame.progress.SetValue(0)
 
     def onGridChoice(self, event):
-        data.setGrid(event.GetString())
-        self.selParamLst.Set(data.getProps())
+        project.setGrid(event.GetString())
+        self.selParamLst.Set(project.getProps())
         
     def onParamChoice(self, event):
         self.prop = event.GetString()
     
     def onSaveClick(self, event):
+        #global project
         if not task.cancelFlag:
             project.save()
             
@@ -69,13 +71,10 @@ class DWFrame(dwGUI.Frame):
         self.Close(True)
     
     def onCloseWindow(self, event):
-        self.onCancelClick(event)
-        if not task.cancelFlag:
-            project.save()
-        else:
-            project.close()
+        if not task.isFinished:
+            self.onCancelClick(event)
+        project.close()
         self.Destroy()
-    
 
 class DWTask():
     def __init__(self):
@@ -83,6 +82,7 @@ class DWTask():
         self.subProcs = []
         self.paramCode = 0
         self.distCell = 0
+        self.isFinished = True
         
     def mpCalcDistance(self):
         """
@@ -90,8 +90,8 @@ class DWTask():
         each process gets information from which cell it has to make calculation and how many cells it has to work
         """
         
-        cellCountInJobInt = int(data.defined_cell_count/procCount)
-        cellCountInJobRest = data.defined_cell_count%procCount
+        cellCountInJobInt = int(project.defined_cell_count/procCount)
+        cellCountInJobRest = project.defined_cell_count%procCount
           
         firstCellInJob = 0
         for i in range(procCount):
@@ -108,35 +108,39 @@ class DWTask():
             for i in range(len(self.jobs)):
                 subProc = sp.Popen('pythonw %sweightCalcProc.py %s %s %s %s %s' % (modulePath, self.jobs[i][0], self.jobs[i][1], tmpFilePath, self.paramCode, self.distCell), stdout = sp.PIPE)
                 self.subProcs.append(subProc)
-                 
+                
+            thProgress = threading.Thread(target=self.updateProgress)
+            thProgress.start()
+     
             #wait until all processes finish
             for subProc in self.subProcs:
                 subProc.wait()  
 
     def initCalc(self):
         """Upload and consolidate data"""
-        startTime = datetime.now()
+        startTime = time.time()
         lWeight = []
         self.jobs = []
-        self.ch_prop_value = data.getPropValue(frame.prop)
+        self.isFinished = False
+        self.ch_prop_value = project.getPropValue(frame.prop)
         self.paramCode = frame.paramCode
         self.distCell = frame.distCell
                    
-        pdist = data.createProp("PDistance")
+        pdist = project.createProp("PDistance")
         pdist.set_values(0)
-           
+        
         #create teporary directory
         if not os.path.exists(tmpFilePath):
             os.mkdir(tmpFilePath)
-         
+        
         #data uploading to external files in temporary directory
         f = open(tmpFilePath + 'ch_prop_value.txt', 'w')
         f.writelines([str(item) for item in self.ch_prop_value])
         f.close()
         f = open(tmpFilePath + 'cell_indices.txt', 'w')
-        f.writelines(['%s %s %s\n' % (item[0], item[1], item[2]) for item in data.cell_indices]) # \n при записи в файл трансформируется в \r\n 
+        f.writelines(['%s %s %s\n' % (item[0], item[1], item[2]) for item in project.cell_indices]) # \n при записи в файл трансформируется в \r\n 
         f.close()
-         
+        
         self.mpCalcDistance()
          
         if not self.cancelFlag:        
@@ -147,30 +151,55 @@ class DWTask():
                 file.close()
             pdist.set_values(lWeight)
             
-            frame.SetTitle('%s Execution time: %s' %(frame.fTitle, datetime.now() - startTime))
-            frame.saveBtnEnable()
+            frame.SetTitle('%s Execution time: %s' %(frame.fTitle, time.strftime("%X", time.gmtime(time.time() - startTime)) ))
+            
         else: print('Terminated by user') 
-        
+        self.isFinished = True
+        #frame.progress.SetValue(0)
+        frame.runBtnEnable(True)
         self.removeFiles()
-        
     
     def removeFiles(self):
         """remove temporary files and directory"""
         if os.path.exists(tmpFilePath):
             for item in os.listdir(path=tmpFilePath):
-                os.remove(tmpFilePath + item)
+                isRemoved = False
+                #waiting when process close files
+                while not isRemoved:
+                    try: 
+                        os.remove(tmpFilePath + item)
+                        isRemoved = True
+                    except PermissionError:
+                        pass
             os.rmdir(tmpFilePath) 
-
+            
+    def updateProgress(self):
+        """
+        Update the progress bar
+        """
+        while not os.path.exists('%sfifo.txt' % tmpFilePath): #waiting while file fifo will be exist
+            time.sleep(0.5)    
+        fifo = open('%sfifo.txt' % tmpFilePath, 'r')
+        while not self.isFinished:
+            
+            line = fifo.readline()[:-1]
+            if line.isdigit():
+                prog = int(line) * procCount
+                prog = int(prog * 50 / project.defined_cell_count)
+                frame.progress.SetValue(prog)
+               
+        frame.progress.SetValue(50)
+        fifo.close() 
+               
 if __name__ == '__main__':
     app = wx.App() 
     frame = DWFrame(parent=None)
+    frame.Centre()
     
-    project = roxar.Project.open(projectPath, readonly=False)
-    
-    data = pi.RMSProject(project)
+    project = pi.RMSProject(projectPath)
     task = DWTask()
     
-    grids = data.getGrids()
+    grids = project.getGrids()
     frame.selGridLst.Set(grids)
   
     
